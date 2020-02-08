@@ -1,29 +1,58 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 func TestCli(t *testing.T) {
-	cmd := exec.Command("build/cliprov", "Kevin")
-	var out bytes.Buffer
+	wg := sync.WaitGroup{}
+	cmd := exec.Command("build/cliprov")
 	var errOut bytes.Buffer
-	cmd.Stdout = &out
 	cmd.Stderr = &errOut
-	err := cmd.Run()
+	in, err := cmd.StdinPipe()
 	if err != nil {
-		t.Fatal(err, out.String(), errOut.String())
+		t.Fatal(err)
 	}
-	if strings.Trim(out.String(), " \n") != "Hello, Kevin!" {
-		t.Fatalf("Invalid output '%s'", out.String())
+	reader, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
 	}
+	buff := bufio.NewReader(reader)
+	wg.Add(1)
+	go func() {
+		err = cmd.Run()
+		if err != nil {
+			t.Log(err, errOut.String())
+		}
+		wg.Done()
+	}()
+	_, err = fmt.Fprintln(in, "Kevin")
+	if err != nil {
+		t.Fatal(err, errOut.String())
+	}
+	response, err := buff.ReadString('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = strings.TrimSpace(response)
+	if response != "Hello, Kevin!" {
+		t.Fatalf("Invalid output '%s' - %s", response, errOut.String())
+	}
+	err = cmd.Process.Kill()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
 }
 
 func TestWeb(t *testing.T) {
@@ -57,20 +86,45 @@ func TestWeb(t *testing.T) {
 }
 
 func BenchmarkCli(b *testing.B) {
+	wg := sync.WaitGroup{}
+	cmd := exec.Command("build/cliprov")
+	var errOut bytes.Buffer
+	cmd.Stderr = &errOut
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		b.Fatal(err)
+	}
+	reader, err := cmd.StdoutPipe()
+	if err != nil {
+		b.Fatal(err)
+	}
+	buff := bufio.NewReader(reader)
+	wg.Add(1)
+	go func() {
+		_ = cmd.Run()
+		wg.Done()
+	}()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cmd := exec.Command("build/cliprov", "Kevin")
-		var out bytes.Buffer
-		var errOut bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &errOut
-		err := cmd.Run()
+		_, err = fmt.Fprintln(in, "Kevin")
 		if err != nil {
-			b.Fatal(err, out.String(), errOut.String())
+			b.Fatal(err, errOut.String())
 		}
-		if strings.Trim(out.String(), " \n") != "Hello, Kevin!" {
-			b.Fatalf("Invalid output '%s'", out.String())
+		response, err := buff.ReadString('\n')
+		if err != nil {
+			b.Fatal(err)
+		}
+		response = strings.TrimSpace(response)
+		if response != "Hello, Kevin!" {
+			b.Fatalf("Invalid output '%s' - %s", response, errOut.String())
 		}
 	}
+	b.StopTimer()
+	err = cmd.Process.Kill()
+	if err != nil {
+		b.Fatal(err)
+	}
+	wg.Wait()
 }
 
 func BenchmarkWeb(b *testing.B) {
