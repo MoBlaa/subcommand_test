@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"net"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/subcommands_test/grpc/pb"
 	"github.com/subcommands_test/grpc/provider"
 	"google.golang.org/grpc"
 )
@@ -107,8 +110,8 @@ func TestGrpc(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	client := provider.NewCommandClient(conn)
-	resp, err := client.Handle(context.Background(), &provider.CommandArguments{
+	client := pb.NewCommandClient(conn)
+	resp, err := client.Handle(context.Background(), &pb.CommandArguments{
 		Args: []string{"Kevin"},
 	})
 	if err != nil {
@@ -208,45 +211,38 @@ func BenchmarkWeb(b *testing.B) {
 }
 
 func BenchmarkGrpc(b *testing.B) {
-	cmd := exec.Command("build/grpcprov", "-port", "8082")
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errOut
-	done := make(chan struct{})
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", 8082))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	grpcServer := grpc.NewServer()
+	pb.RegisterCommandServer(grpcServer, &provider.CommandProviderServer{})
 	go func() {
-		err := cmd.Run()
+		err := grpcServer.Serve(lis)
 		if err != nil {
-			b.Log(err, out.String(), errOut.String())
+			b.Log(err)
 		}
-		close(done)
 	}()
-	<-time.After(100 * time.Millisecond)
+
 	conn, err := grpc.Dial(":8082", grpc.WithInsecure())
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer conn.Close()
-	client := provider.NewCommandClient(conn)
+	client := pb.NewCommandClient(conn)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		resp, err := client.Handle(context.Background(), &provider.CommandArguments{
+		resp, err := client.Handle(context.Background(), &pb.CommandArguments{
 			Args: []string{"Kevin"},
 		})
 		if err != nil {
-			b.Fatal(err, out.String(), errOut.String())
+			b.Fatal(err)
 		}
 		if resp.Result != "Hello, Kevin!" {
 			b.Fatalf("invalid result: %s", resp.Result)
 		}
 	}
 	b.StopTimer()
-	if cmd.Process != nil {
-		err = cmd.Process.Kill()
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-	<-done
+	grpcServer.Stop()
 }
