@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -20,9 +21,10 @@ import (
 	"google.golang.org/grpc"
 )
 
-func TestCli(t *testing.T) {
-	wg := sync.WaitGroup{}
-	cmd := exec.Command("build/cliprov")
+type iterHandler func(in io.WriteCloser, reader *bufio.Reader, errOut *bytes.Buffer)
+
+func execStart(t *testing.T, command []string, iteration iterHandler) {
+	cmd := exec.Command(command[0], command[1:]...)
 	var errOut bytes.Buffer
 	cmd.Stderr = &errOut
 	in, err := cmd.StdinPipe()
@@ -34,61 +36,121 @@ func TestCli(t *testing.T) {
 		t.Fatal(err)
 	}
 	buff := bufio.NewReader(reader)
-	wg.Add(1)
+
+	waitc := make(chan struct{})
 	go func() {
+		defer close(waitc)
 		err = cmd.Run()
 		if err != nil {
 			t.Log(err, errOut.String())
 		}
-		wg.Done()
 	}()
-	_, err = fmt.Fprintln(in, "Kevin")
-	if err != nil {
-		t.Fatal(err, errOut.String())
+
+	<-time.After(100 * time.Millisecond)
+
+	iteration(in, buff, &errOut)
+
+	select {
+	case <-waitc:
+	case <-time.After(time.Second):
+		err = cmd.Process.Kill()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	response, err := buff.ReadString('\n')
-	if err != nil {
-		t.Fatal(err)
-	}
-	response = strings.TrimSpace(response)
-	if response != "Hello, Kevin!" {
-		t.Fatalf("Invalid output '%s' - %s", response, errOut.String())
-	}
-	err = cmd.Process.Kill()
-	if err != nil {
-		t.Fatal(err)
-	}
-	wg.Wait()
+}
+
+func TestCli(t *testing.T) {
+	execStart(t, []string{"build/cliprov"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
+		_, err := fmt.Fprintln(in, "Kevin")
+		if err != nil {
+			t.Error(err, errOut.String())
+			return
+		}
+		response, err := out.ReadString('\n')
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		response = strings.TrimSpace(response)
+		if response != "Hello, Kevin!" {
+			t.Errorf("Invalid output '%s' - %s", response, errOut.String())
+		}
+	})
 }
 
 func TestWeb(t *testing.T) {
-	srv := &http.Server{Addr: ":8080"}
-
-	done := make(chan struct{})
-	go func() {
-		err := srv.ListenAndServe()
-		if err != nil {
-			t.Log(err)
+	execStart(t, []string{"build/webprov"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
+		var err error
+		var resp *http.Response
+		for i := 0; i < 5; i++ {
+			<-time.After(250 * time.Millisecond)
+			resp, err = http.Get("http://localhost:8080?params=Kevin")
+			if err == nil {
+				break
+			}
 		}
-		close(done)
-	}()
-	resp, err := http.Get("http://localhost:8080?params=Kevin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	respBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response := strings.Trim(string(respBody), " \n")
-	if response != "Hello, Kevin!" {
-		t.Fatalf("invalid response: '%s'", response)
-	}
-	err = srv.Shutdown(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	<-done
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		respBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		response := strings.Trim(string(respBody), " \n")
+		if response != "Hello, Kevin!" {
+			t.Errorf("invalid response: '%s'", response)
+		}
+	})
+}
+
+func TestGrpc(t *testing.T) {
+	execStart(t, []string{"build/grpcprov"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
+		var conn *grpc.ClientConn
+		var err error
+		for i := 0; i < 5; i++ {
+			<-time.After(250 * time.Millisecond)
+			conn, err = grpc.Dial(":8080", grpc.WithInsecure())
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			t.Error(err, errOut.String())
+			return
+		}
+		defer conn.Close()
+		client := pb.NewCommandClient(conn)
+
+		resp, err := client.Handle(context.Background(), &pb.CommandArguments{
+			Args: []string{"Kevin"},
+		})
+		if err != nil {
+			t.Error(err, errOut.String())
+			return
+		}
+		if resp.Result != "Hello, Kevin!" {
+			t.Errorf("invalid result: %s", resp.Result)
+		}
+
+		stream, err := client.HandleStream(context.Background())
+		if err != nil {
+			t.Error(err, errOut.String())
+			return
+		}
+		err = stream.Send(&pb.CommandArguments{
+			Args: []string{"Kevin"},
+		})
+		if err != nil {
+			t.Error(err, errOut.String())
+			return
+		}
+		if resp.Result != "Hello, Kevin!" {
+			t.Errorf("invalid result: %s", resp.Result)
+		}
+	})
 }
 
 func BenchmarkCli(b *testing.B) {
