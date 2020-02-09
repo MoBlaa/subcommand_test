@@ -14,12 +14,12 @@ Currently basic __HTTP Web__ and __CLI__ versions are implemented. The [web](web
 
 These benchmarks are performed on an really old iMac (2010). These will be updated with more specific hardware information. Till then feel free to download the source and perform the tests by yourself.
 
-| Benchmark             | Iterations | Speed        |
-| --------------------- | ---------- | ------------ |
-| BenchmarkCli-2        | 176875     | 7627 ns/op   |
-| BenchmarkWeb-2        | 5866       | 217984 ns/op |
-| BenchmarkGrpc-2       | 5733       | 267974 ns/op |
-| BenchmarkGrpcStream-2 | 145128     | 9113 ns/op   |
+| Benchmark             | Iterations | Speed        | Memory Usage | Allocation   |
+| --------------------- | ---------- | ------------ | ------------ | ------------ |
+| BenchmarkCli-2        | 235935     | 6901 ns/op   | 32 B/op      | 2 allocs/op  |
+| BenchmarkWeb-2        | 5250       | 237826 ns/op | 3550 B/op    | 47 allocs/op |
+| BenchmarkGrpc-2       | 3942       | 268154 ns/op | 4853 B/op    | 98 allocs/op |
+| BenchmarkGrpcStream-2 | 147669     | 8506 ns/op   | 535 B/op     | 15 allocs/op |
 
 ## WIP - TODO
 
