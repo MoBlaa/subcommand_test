@@ -62,16 +62,13 @@ func TestCli(t *testing.T) {
 }
 
 func TestWeb(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	srv := &http.Server{Addr: ":8080"}
+
 	done := make(chan struct{})
 	go func() {
-		cmd := exec.CommandContext(ctx, "build/webprov")
-		var out bytes.Buffer
-		var errOut bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &errOut
-		if err := cmd.Run(); err != nil {
-			t.Log(err, out.String(), errOut.String())
+		err := srv.ListenAndServe()
+		if err != nil {
+			t.Log(err)
 		}
 		close(done)
 	}()
@@ -87,44 +84,9 @@ func TestWeb(t *testing.T) {
 	if response != "Hello, Kevin!" {
 		t.Fatalf("invalid response: '%s'", response)
 	}
-	cancel()
-	<-done
-}
-
-func TestGrpc(t *testing.T) {
-	cmd := exec.Command("build/grpcprov", "-port", "8081")
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errOut
-	done := make(chan struct{})
-	go func() {
-		err := cmd.Run()
-		if err != nil {
-			t.Log(err, out.String(), errOut.String())
-		}
-		close(done)
-	}()
-	conn, err := grpc.Dial(":8081", grpc.WithInsecure())
+	err = srv.Shutdown(context.Background())
 	if err != nil {
 		t.Fatal(err)
-	}
-	defer conn.Close()
-	client := pb.NewCommandClient(conn)
-	resp, err := client.Handle(context.Background(), &pb.CommandArguments{
-		Args: []string{"Kevin"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Result != "Hello, Kevin!" {
-		t.Fatalf("invalid result: %s", resp.Result)
-	}
-	if cmd.Process != nil {
-		err = cmd.Process.Kill()
-		if err != nil {
-			t.Fatal(err)
-		}
 	}
 	<-done
 }
@@ -189,17 +151,18 @@ func BenchmarkCli(b *testing.B) {
 	wg.Wait()
 }
 
+func init() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello, %s!", r.URL.Query().Get("params"))
+	})
+}
+
 func BenchmarkWeb(b *testing.B) {
+	srv := &http.Server{Addr: ":8080"}
+
 	done := make(chan struct{})
-	cmd := exec.Command("build/webprov")
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errOut
 	go func() {
-		if err := cmd.Run(); err != nil {
-			b.Log(err, out.String(), errOut.String())
-		}
+		srv.ListenAndServe()
 		close(done)
 	}()
 	b.ResetTimer()
@@ -218,13 +181,14 @@ func BenchmarkWeb(b *testing.B) {
 		}
 	}
 	b.StopTimer()
+	err := srv.Shutdown(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
 	select {
 	case <-done:
 	case <-time.NewTimer(100 * time.Millisecond).C:
-		err := cmd.Process.Kill()
-		if err != nil {
-			b.Fatalf("failed to kill process: %v", err)
-		}
+		b.Fatal("didn't shutdown server properly")
 	}
 }
 

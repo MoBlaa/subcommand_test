@@ -15,4 +15,10 @@ test: build_cli build_web build_grpc
 	@go test
 
 bench: build_cli build_web build_grpc
-	@go test -bench .
+	@go test -bench . -benchmem
+
+kill:
+	-@killall -9 webprov
+	-@killall -9 cliprov
+	-@killall -9 grpcprov
+	-@killall -9 go
