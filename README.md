@@ -33,7 +33,7 @@ Versions: Go 1.13.7, grpc v1.27.1
 
 ## What not to test
 
-While exploring the different ways to implement something like this also want to list things i don't want to test and why.
+While exploring the different ways to implement something like this i also want to list things i don't want to test and why.
 
 - Websocket - Websockets allow bidirectional communication, but reconnecting (and some other little things) have to be handled in order to use it properly. I would expect the Websocket implementation to have a performance between GRPC Streaming and the HTTP implementation.
 - `go/exec` with starting a process every time a command has to be delegated - This was the basic implementation before using `os.Stdin` and `os.Stdout` and was by far slower than the basic http version.
