@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/subcommands_test/lib"
+	"github.com/subcommands_test/cli/lib"
 )
 
 func main() {
