@@ -16,10 +16,10 @@ These benchmarks are performed on an really old iMac (2010). These will be updat
 
 | Benchmark             | Iterations | Speed        |
 | --------------------- | ---------- | ------------ |
-| BenchmarkCli-2        | 32542      | 33926 ns/op  |
-| BenchmarkWeb-2        | 6307       | 183996 ns/op |
-| BenchmarkGrpc-2       | 6385       | 183819 ns/op |
-| BenchmarkGrpcStream-2 | 142116     | 10903 ns/op  |
+| BenchmarkCli-2        | 176875     | 7627 ns/op   |
+| BenchmarkWeb-2        | 5866       | 217984 ns/op |
+| BenchmarkGrpc-2       | 5733       | 267974 ns/op |
+| BenchmarkGrpcStream-2 | 145128     | 9113 ns/op   |
 
 ## What not to test
 
