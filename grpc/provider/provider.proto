@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+service Command {
+    rpc Handle(CommandArguments) returns (CommandResult) {}
+}
+
+message CommandArguments {
+    repeated string args = 1;
+}
+
+message CommandResult {
+    string result = 1;
+}

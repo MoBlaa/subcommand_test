@@ -12,6 +12,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/subcommands_test/grpc/provider"
+	"google.golang.org/grpc"
 )
 
 func TestCli(t *testing.T) {
@@ -82,6 +85,44 @@ func TestWeb(t *testing.T) {
 		t.Fatalf("invalid response: '%s'", response)
 	}
 	cancel()
+	<-done
+}
+
+func TestGrpc(t *testing.T) {
+	cmd := exec.Command("build/grpcprov", "-port", "8081")
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	done := make(chan struct{})
+	go func() {
+		err := cmd.Run()
+		if err != nil {
+			t.Log(err, out.String(), errOut.String())
+		}
+		close(done)
+	}()
+	conn, err := grpc.Dial(":8081", grpc.WithInsecure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	client := provider.NewCommandClient(conn)
+	resp, err := client.Handle(context.Background(), &provider.CommandArguments{
+		Args: []string{"Kevin"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Result != "Hello, Kevin!" {
+		t.Fatalf("invalid result: %s", resp.Result)
+	}
+	if cmd.Process != nil {
+		err = cmd.Process.Kill()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	<-done
 }
 
@@ -164,4 +205,48 @@ func BenchmarkWeb(b *testing.B) {
 			b.Fatalf("failed to kill process: %v", err)
 		}
 	}
+}
+
+func BenchmarkGrpc(b *testing.B) {
+	cmd := exec.Command("build/grpcprov", "-port", "8082")
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	done := make(chan struct{})
+	go func() {
+		err := cmd.Run()
+		if err != nil {
+			b.Log(err, out.String(), errOut.String())
+		}
+		close(done)
+	}()
+	<-time.After(100 * time.Millisecond)
+	conn, err := grpc.Dial(":8082", grpc.WithInsecure())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+	client := provider.NewCommandClient(conn)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := client.Handle(context.Background(), &provider.CommandArguments{
+			Args: []string{"Kevin"},
+		})
+		if err != nil {
+			b.Fatal(err, out.String(), errOut.String())
+		}
+		if resp.Result != "Hello, Kevin!" {
+			b.Fatalf("invalid result: %s", resp.Result)
+		}
+	}
+	b.StopTimer()
+	if cmd.Process != nil {
+		err = cmd.Process.Kill()
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	<-done
 }
