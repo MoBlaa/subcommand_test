@@ -53,6 +53,11 @@ func testStart(t *testing.T, command []string, iteration testHandler) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		select {
+		case <-waitc:
+		case <-time.After(time.Second):
+			t.Fatal("failed to kill process")
+		}
 	}
 }
 
