@@ -42,6 +42,6 @@ While exploring the different ways to implement something like this also want to
 
 Currently (09.02.2020) the CLI version seems to be the best fit for my project. As i want to control the installation and execution process of the subcommands i'll be using `os/exec` anyways. As i also want to provide the most simple environment for others to develop their subcommands with the `os/exec` implementation also seems most straight forward. No heavy handling of a framework like grpc. Just implement something that reads from stdin and write to stdout and it works.
 
-But `grpc` also seems great for hosted environments. If i want to provide a server infrastructure, where people can host their own chat command listener or even Bots, this may nice as spawning another container providing functionality through `grpc` may be simpler than installing a cli script and wiring it into the hub.
+But `grpc` also seems great for hosted environments. If i want to provide a server infrastructure, where people can host their own chat command listener or even Bots, this may be nice as spawning another container providing functionality through `grpc` may be simpler than installing a cli script and wiring it into the hub.
 
 I may think about implementing an abstraction over the actual implementation so i can provide local subcommands (with `os/exec`) and remote ones (with `grpc` and `tcp`). 
