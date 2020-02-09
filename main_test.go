@@ -148,25 +148,43 @@ func BenchmarkCli(b *testing.B) {
 		_ = cmd.Run()
 		wg.Done()
 	}()
+	waitc := make(chan struct{})
+	go func() {
+		defer close(waitc)
+		for i := 0; i < b.N; i++ {
+			response, err := buff.ReadString('\n')
+			if err != nil {
+				b.Log(err)
+				b.Fail()
+				return
+			}
+			response = strings.TrimSpace(response)
+			if response != "Hello, Kevin!" {
+				b.Logf("Invalid output '%s' - %s", response, errOut.String())
+				b.Fail()
+				return
+			}
+		}
+	}()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err = fmt.Fprintln(in, "Kevin")
 		if err != nil {
 			b.Fatal(err, errOut.String())
 		}
-		response, err := buff.ReadString('\n')
+	}
+	select {
+	case <-waitc:
+	case <-time.After(time.Second):
+		b.Log("didn't receive all responses")
+		b.Fail()
+	}
+	b.StopTimer()
+	if cmd.Process != nil {
+		err = cmd.Process.Kill()
 		if err != nil {
 			b.Fatal(err)
 		}
-		response = strings.TrimSpace(response)
-		if response != "Hello, Kevin!" {
-			b.Fatalf("Invalid output '%s' - %s", response, errOut.String())
-		}
-	}
-	b.StopTimer()
-	err = cmd.Process.Kill()
-	if err != nil {
-		b.Fatal(err)
 	}
 	wg.Wait()
 }
