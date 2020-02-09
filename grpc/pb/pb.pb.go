@@ -110,16 +110,17 @@ func init() {
 func init() { proto.RegisterFile("pb.proto", fileDescriptor_f80abaa17e25ccc8) }
 
 var fileDescriptor_f80abaa17e25ccc8 = []byte{
-	// 132 bytes of a gzipped FileDescriptorProto
+	// 150 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x28, 0x48, 0xd2, 0x2b,
 	0x28, 0xca, 0x2f, 0xc9, 0x57, 0x52, 0xe3, 0x12, 0x70, 0xce, 0xcf, 0xcd, 0x4d, 0xcc, 0x4b, 0x71,
 	0x2c, 0x4a, 0x2f, 0xcd, 0x4d, 0xcd, 0x2b, 0x29, 0x16, 0x12, 0xe2, 0x62, 0x49, 0x2c, 0x4a, 0x2f,
 	0x96, 0x60, 0x54, 0x60, 0xd6, 0xe0, 0x0c, 0x02, 0xb3, 0x95, 0xd4, 0xb9, 0x78, 0xa1, 0xea, 0x82,
 	0x52, 0x8b, 0x4b, 0x73, 0x4a, 0x84, 0xc4, 0xb8, 0xd8, 0x8a, 0xc0, 0x2c, 0x09, 0x46, 0x05, 0x46,
-	0x0d, 0xce, 0x20, 0x28, 0xcf, 0xc8, 0x82, 0x8b, 0x1d, 0xaa, 0x50, 0x48, 0x97, 0x8b, 0xcd, 0x23,
+	0x0d, 0xce, 0x20, 0x28, 0xcf, 0xa8, 0x90, 0x8b, 0x1d, 0xaa, 0x50, 0x48, 0x97, 0x8b, 0xcd, 0x23,
 	0x31, 0x2f, 0x25, 0x27, 0x55, 0x48, 0x50, 0x0f, 0xdd, 0x12, 0x29, 0x3e, 0x3d, 0x14, 0xf3, 0x94,
-	0x18, 0x92, 0xd8, 0xc0, 0x2e, 0x32, 0x06, 0x04, 0x00, 0x00, 0xff, 0xff, 0x3a, 0x98, 0xc0, 0x13,
-	0x9d, 0x00, 0x00, 0x00,
+	0x18, 0x84, 0xcc, 0xb9, 0x78, 0x20, 0xca, 0x83, 0x4b, 0x8a, 0x52, 0x13, 0x73, 0x89, 0xd2, 0xa4,
+	0xc1, 0x68, 0xc0, 0x98, 0xc4, 0x06, 0xf6, 0x8a, 0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0xf2, 0xcd,
+	0xe3, 0x8a, 0xd6, 0x00, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -135,6 +136,7 @@ const _ = grpc.SupportPackageIsVersion6
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type CommandClient interface {
 	Handle(ctx context.Context, in *CommandArguments, opts ...grpc.CallOption) (*CommandResult, error)
+	HandleStream(ctx context.Context, opts ...grpc.CallOption) (Command_HandleStreamClient, error)
 }
 
 type commandClient struct {
@@ -154,9 +156,41 @@ func (c *commandClient) Handle(ctx context.Context, in *CommandArguments, opts .
 	return out, nil
 }
 
+func (c *commandClient) HandleStream(ctx context.Context, opts ...grpc.CallOption) (Command_HandleStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Command_serviceDesc.Streams[0], "/Command/HandleStream", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &commandHandleStreamClient{stream}
+	return x, nil
+}
+
+type Command_HandleStreamClient interface {
+	Send(*CommandArguments) error
+	Recv() (*CommandResult, error)
+	grpc.ClientStream
+}
+
+type commandHandleStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *commandHandleStreamClient) Send(m *CommandArguments) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *commandHandleStreamClient) Recv() (*CommandResult, error) {
+	m := new(CommandResult)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // CommandServer is the server API for Command service.
 type CommandServer interface {
 	Handle(context.Context, *CommandArguments) (*CommandResult, error)
+	HandleStream(Command_HandleStreamServer) error
 }
 
 // UnimplementedCommandServer can be embedded to have forward compatible implementations.
@@ -165,6 +199,9 @@ type UnimplementedCommandServer struct {
 
 func (*UnimplementedCommandServer) Handle(ctx context.Context, req *CommandArguments) (*CommandResult, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Handle not implemented")
+}
+func (*UnimplementedCommandServer) HandleStream(srv Command_HandleStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method HandleStream not implemented")
 }
 
 func RegisterCommandServer(s *grpc.Server, srv CommandServer) {
@@ -189,6 +226,32 @@ func _Command_Handle_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Command_HandleStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(CommandServer).HandleStream(&commandHandleStreamServer{stream})
+}
+
+type Command_HandleStreamServer interface {
+	Send(*CommandResult) error
+	Recv() (*CommandArguments, error)
+	grpc.ServerStream
+}
+
+type commandHandleStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *commandHandleStreamServer) Send(m *CommandResult) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *commandHandleStreamServer) Recv() (*CommandArguments, error) {
+	m := new(CommandArguments)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 var _Command_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "Command",
 	HandlerType: (*CommandServer)(nil),
@@ -198,6 +261,13 @@ var _Command_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Command_Handle_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "HandleStream",
+			Handler:       _Command_HandleStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "pb.proto",
 }

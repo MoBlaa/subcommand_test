@@ -2,6 +2,7 @@ syntax = "proto3";
 
 service Command {
     rpc Handle(CommandArguments) returns (CommandResult) {}
+    rpc HandleStream(stream CommandArguments) returns (stream CommandResult) {}
 }
 
 message CommandArguments {

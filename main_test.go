@@ -246,3 +246,68 @@ func BenchmarkGrpc(b *testing.B) {
 	b.StopTimer()
 	grpcServer.Stop()
 }
+
+func BenchmarkGrpcStream(b *testing.B) {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", 8082))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	grpcServer := grpc.NewServer()
+	pb.RegisterCommandServer(grpcServer, &provider.CommandProviderServer{})
+	go func() {
+		err := grpcServer.Serve(lis)
+		if err != nil {
+			b.Log(err)
+		}
+	}()
+
+	conn, err := grpc.Dial(":8082", grpc.WithInsecure())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer conn.Close()
+	client := pb.NewCommandClient(conn)
+
+	stream, err := client.HandleStream(context.Background())
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	// Start listener for recv
+	waitc := make(chan struct{})
+	go func() {
+		defer close(waitc)
+		for i := 0; i < b.N; i++ {
+			resp, err := stream.Recv()
+			if err != nil {
+				b.Log(err)
+				b.Fail()
+				break
+			}
+			if resp.Result != "Hello, Kevin!" {
+				b.Logf("invalid result: %s", resp.Result)
+				b.Fail()
+				break
+			}
+		}
+	}()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err = stream.Send(&pb.CommandArguments{
+			Args: []string{"Kevin"},
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	select {
+	case <-waitc:
+	case <-time.After(time.Second):
+		b.Log("didn't receive all responses")
+		b.Fail()
+	}
+	b.StopTimer()
+	stream.CloseSend()
+	grpcServer.Stop()
+}
