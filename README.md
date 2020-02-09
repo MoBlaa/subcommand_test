@@ -21,10 +21,6 @@ These benchmarks are performed on an really old iMac (2010). These will be updat
 | BenchmarkGrpc-2       | 3942       | 268154 ns/op | 4853 B/op    | 98 allocs/op |
 | BenchmarkGrpcStream-2 | 147669     | 8506 ns/op   | 535 B/op     | 15 allocs/op |
 
-## WIP - TODO
-
-Currently not all tests use os/exec to spawn a new subcommand to run an external program. This may affect the performance.
-
 ## What not to test
 
 While exploring the different ways to implement something like this also want to list things i don't want to test and why.
