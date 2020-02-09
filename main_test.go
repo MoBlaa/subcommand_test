@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -113,7 +114,7 @@ func TestGrpc(t *testing.T) {
 		var err error
 		for i := 0; i < 5; i++ {
 			<-time.After(250 * time.Millisecond)
-			conn, err = grpc.Dial(":8080", grpc.WithInsecure())
+			conn, err = grpc.Dial("unix:///tmp/grpc_subcommand.sock", grpc.WithInsecure())
 			if err == nil {
 				break
 			}
@@ -152,6 +153,7 @@ func TestGrpc(t *testing.T) {
 			t.Errorf("invalid result: %s", resp.Result)
 		}
 	})
+	os.Remove("/tmp/grpc_subcommand.sock")
 }
 
 func benchStart(b *testing.B, command []string, iteration testHandler) {
@@ -261,8 +263,8 @@ func BenchmarkWeb(b *testing.B) {
 	})
 }
 
-func BenchmarkGrpc(b *testing.B) {
-	benchStart(b, []string{"build/grpcprov"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
+func BenchmarkGrpcTcp(b *testing.B) {
+	benchStart(b, []string{"build/grpcprov", "-network", "tcp", "-address", "localhost:8080"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
 		var conn *grpc.ClientConn
 		var err error
 		for i := 0; i < 5; i++ {
@@ -296,8 +298,44 @@ func BenchmarkGrpc(b *testing.B) {
 	})
 }
 
-func BenchmarkGrpcStream(b *testing.B) {
+func BenchmarkGrpcSocket(b *testing.B) {
 	benchStart(b, []string{"build/grpcprov"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
+		var conn *grpc.ClientConn
+		var err error
+		for i := 0; i < 5; i++ {
+			<-time.After(250 * time.Millisecond)
+			conn, err = grpc.Dial("unix:////tmp/grpc_subcommand.sock", grpc.WithInsecure())
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			b.Error(err)
+			return
+		}
+		defer conn.Close()
+		client := pb.NewCommandClient(conn)
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			resp, err := client.Handle(context.Background(), &pb.CommandArguments{
+				Args: []string{"Kevin"},
+			})
+			if err != nil {
+				b.Error(err)
+				return
+			}
+			if resp.Result != "Hello, Kevin!" {
+				b.Errorf("invalid result: %s", resp.Result)
+				return
+			}
+		}
+	})
+	os.Remove("/tmp/grpc_subcommand.sock")
+}
+
+func BenchmarkGrpcTcp_Stream(b *testing.B) {
+	benchStart(b, []string{"build/grpcprov", "-network", "tcp", "-address", "localhost:8080"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
 		var err error
 		var conn *grpc.ClientConn
 		for i := 0; i < 5; i++ {
@@ -354,4 +392,65 @@ func BenchmarkGrpcStream(b *testing.B) {
 		}
 		stream.CloseSend()
 	})
+}
+
+func BenchmarkGrpcSocket_Stream(b *testing.B) {
+	benchStart(b, []string{"build/grpcprov"}, func(in io.WriteCloser, out *bufio.Reader, errOut *bytes.Buffer) {
+		var err error
+		var conn *grpc.ClientConn
+		for i := 0; i < 5; i++ {
+			<-time.After(250 * time.Millisecond)
+			conn, err = grpc.Dial("unix:////tmp/grpc_subcommand.sock", grpc.WithInsecure())
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			b.Error(err, errOut.String())
+			return
+		}
+		defer conn.Close()
+		client := pb.NewCommandClient(conn)
+
+		stream, err := client.HandleStream(context.Background())
+		if err != nil {
+			b.Error(err, errOut.String())
+			return
+		}
+
+		// Start listener for recv
+		waitc := make(chan struct{})
+		go func() {
+			defer close(waitc)
+			for i := 0; i < b.N; i++ {
+				resp, err := stream.Recv()
+				if err != nil {
+					b.Error(err)
+					break
+				}
+				if resp.Result != "Hello, Kevin!" {
+					b.Errorf("invalid result: %s", resp.Result)
+					break
+				}
+			}
+		}()
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			err = stream.Send(&pb.CommandArguments{
+				Args: []string{"Kevin"},
+			})
+			if err != nil {
+				b.Error(err)
+				break
+			}
+		}
+		select {
+		case <-waitc:
+		case <-time.After(time.Second):
+			b.Error("didn't receive all responses")
+		}
+		stream.CloseSend()
+	})
+	os.Remove("/tmp/grpc_subcommand.sock")
 }

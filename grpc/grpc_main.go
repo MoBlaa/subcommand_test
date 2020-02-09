@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -16,11 +15,12 @@ import (
 )
 
 func main() {
-	port := flag.Int("port", 8080, "Port to serve on")
+	network := flag.String("network", "unix", "Network to use. Either 'unix' or 'tcp'. Default is unix")
+	address := flag.String("address", "/tmp/grpc_subcommand.sock", "address to listen to. default is '/tmp/grpc_subcommand.sock'")
 
 	flag.Parse()
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	lis, err := net.Listen(*network, *address)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
